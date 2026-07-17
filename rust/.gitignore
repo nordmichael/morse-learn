@@ -1,0 +1,7 @@
+# Rust / Cargo
+/target
+**/target
+
+# Dioxus build output
+/dist
+.dioxus

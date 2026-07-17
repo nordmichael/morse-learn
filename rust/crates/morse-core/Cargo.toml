@@ -1,0 +1,10 @@
+[package]
+name = "morse-core"
+version = "0.1.0"
+edition = "2021"
+description = "Portable, UI-free core logic for the Morse code trainer (alphabet, word pool, scoring, progression)."
+license = "Apache-2.0"
+
+[dependencies]
+# Intentionally empty: the core stays dependency-free so it compiles cleanly on
+# every target (WASM, Android, iOS, desktop) with nothing to fetch or link.

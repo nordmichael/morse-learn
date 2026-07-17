@@ -1,0 +1,135 @@
+/* Morse trainer styling. Deliberately simple, high-contrast, and touch-first so
+   it reads well on a phone screen and as a web app. Colours echo the original
+   game's warm red/orange palette. */
+
+:root {
+  --bg: #ef4136;
+  --bg-accent: #f7941e;
+  --ink: #fff;
+  --paper: #f1e4d4;
+  --ok: #00a651;
+  --dim: rgba(255, 255, 255, 0.35);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Poppins", system-ui, -apple-system, Helvetica, Arial, sans-serif;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100%;
+  padding: 16px 20px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* ---- header / progress ---- */
+.top { display: flex; align-items: center; gap: 12px; }
+.bar {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--dim);
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  background: var(--paper);
+  transition: width 0.4s ease;
+}
+.pct { font-size: 13px; opacity: 0.9; white-space: nowrap; }
+
+.lights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.light {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--dim);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.light.on { background: var(--paper); transform: scale(1.15); }
+
+/* ---- the practice word ---- */
+.word {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: clamp(48px, 16vw, 96px);
+  font-weight: 700;
+  letter-spacing: 2px;
+  border-radius: 20px;
+  transition: background 0.2s ease;
+  min-height: 140px;
+}
+.letter { opacity: 0.35; transition: opacity 0.25s ease, transform 0.25s ease; }
+.letter.done { opacity: 0.5; }
+.letter.active { opacity: 1; transform: translateY(-6px); text-decoration: underline; }
+.flash-correct { background: rgba(0, 166, 81, 0.25); }
+.flash-incorrect { background: rgba(0, 0, 0, 0.18); }
+
+/* ---- hint ---- */
+.hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-height: 120px;
+}
+.hint.hidden { visibility: hidden; }
+.hint-img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: var(--paper);
+  border-radius: 16px;
+  padding: 8px;
+}
+.hint-pattern { font-size: 28px; font-weight: 700; letter-spacing: 6px; }
+
+/* ---- buffer + keys ---- */
+.buffer {
+  text-align: center;
+  font-size: 40px;
+  letter-spacing: 10px;
+  min-height: 48px;
+  font-weight: 700;
+}
+.buffer-empty { font-size: 15px; letter-spacing: normal; opacity: 0.6; font-weight: 400; }
+
+.keys { display: flex; gap: 12px; }
+.keys.secondary { margin-top: -4px; }
+.key {
+  flex: 1;
+  border: none;
+  border-radius: 16px;
+  padding: 22px;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--paper);
+  cursor: pointer;
+  transition: transform 0.08s ease, opacity 0.2s ease;
+}
+.key:active { transform: scale(0.96); }
+.key.dot, .key.dash { padding: 34px; font-size: 40px; }
+.key.enter { background: var(--ok); color: #fff; }
+.key.clear { background: var(--bg-accent); color: #fff; }
+.key.secondary { font-size: 18px; }

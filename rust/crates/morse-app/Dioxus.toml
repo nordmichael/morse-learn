@@ -1,0 +1,12 @@
+[application]
+name = "morse-app"
+
+[web.app]
+title = "Morse Learn"
+
+[web.watcher]
+reload_html = true
+
+[web.resource]
+# The stylesheet and images are pulled in via the `asset!` macro in Rust, so no
+# manual resource wiring is needed here.
