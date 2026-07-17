@@ -2610,6 +2610,7 @@ dependencies = [
  "gloo-timers",
  "js-sys",
  "morse-core",
+ "wasm-bindgen",
  "web-sys",
 ]
 

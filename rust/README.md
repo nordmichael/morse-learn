@@ -122,6 +122,9 @@ letter is practised as recognition *and* production:
   - **Straight key** — a single key where *press length* decides dit vs dah,
     like a real Morse key. The dit/dah threshold tracks the current WPM, and the
     letter **auto-commits after an inter-character gap** (no button needed).
+- **Physical keyboard** (web/desktop): `.`/`j` = dit, `-`/`k` = dah,
+  Space/Enter = commit, Backspace = clear; in recognition drills just press the
+  `a`–`z` key. No clicking to focus — the whole app is playable from the keyboard.
 
 All of the above (timing math, tone schedule, press/gap classification, drill
 definitions) lives in `morse-core` and is unit-tested — the UI just renders it.
@@ -142,8 +145,6 @@ All of this is in `morse-core/src/trainer.rs` and exercised by `cargo test`.
 
 ## Suggested next steps
 
-1. **Physical keyboard** on web/desktop (`.`/`-`, Enter to commit; letter keys
-   for recognition drills).
-2. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
-3. **PWA manifest + service worker** for offline install.
-4. **Native shells via `uniffi`** if you later want fully-native mobile UI.
+1. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
+2. **PWA manifest + service worker** for offline install.
+3. **Native shells via `uniffi`** if you later want fully-native mobile UI.

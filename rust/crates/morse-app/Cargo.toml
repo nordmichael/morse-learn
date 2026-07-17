@@ -13,10 +13,15 @@ dioxus = { version = "0.6", features = ["router"] }
 # persist progress). These only compile into the WASM target.
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
+wasm-bindgen = "0.2"
 gloo-timers = { version = "0.3", features = ["futures"] }
 web-sys = { version = "0.3", features = [
     "Window",
     "Storage",
+    "Document",
+    "EventTarget",
+    "Event",
+    "KeyboardEvent",
     "AudioContext",
     "BaseAudioContext",
     "AudioNode",

@@ -59,6 +59,72 @@ fn commit_code(
     play_if_audio(trainer, drill, timing);
 }
 
+/// Recognition answer: record the picked letter, flash, persist, and (for audio
+/// drills) play the next target.
+fn answer_letter(
+    mut trainer: Signal<Trainer>,
+    mut buffer: Signal<String>,
+    mut flash: Signal<Option<Judgement>>,
+    drill: Signal<Drill>,
+    timing: Timing,
+    letter: char,
+) {
+    let judgement = trainer.write().submit(letter);
+    flash.set(Some(judgement));
+    buffer.set(String::new());
+    platform::save_scores(&trainer.read().scores());
+    play_if_audio(trainer, drill, timing);
+}
+
+/// Route a physical key press to the right action for the current drill. `.`/`j`
+/// key a dit, `-`/`k` a dah, Enter/Space commits, Backspace/Escape clears; in
+/// recognition drills an `a`–`z` key answers directly. Returns whether the key
+/// was handled (so its default browser action can be suppressed).
+fn handle_key(
+    trainer: Signal<Trainer>,
+    mut buffer: Signal<String>,
+    mut flash: Signal<Option<Judgement>>,
+    drill: Signal<Drill>,
+    wpm: Signal<u32>,
+    eff_wpm: Signal<u32>,
+    key: &str,
+) -> bool {
+    let timing = current_timing(wpm, eff_wpm);
+    match drill().answer() {
+        Answer::SendCode => match key {
+            "." | "j" | "J" => {
+                flash.set(None);
+                buffer.with_mut(|b| b.push('.'));
+                true
+            }
+            "-" | "k" | "K" => {
+                flash.set(None);
+                buffer.with_mut(|b| b.push('-'));
+                true
+            }
+            "Enter" | " " => {
+                commit_code(trainer, buffer, flash, drill, timing);
+                true
+            }
+            "Backspace" | "Escape" => {
+                buffer.set(String::new());
+                true
+            }
+            _ => false,
+        },
+        Answer::TypeLetter => {
+            let mut chars = key.chars();
+            match (chars.next(), chars.next()) {
+                (Some(c), None) if c.is_ascii_alphabetic() => {
+                    answer_letter(trainer, buffer, flash, drill, timing, c.to_ascii_lowercase());
+                    true
+                }
+                _ => false,
+            }
+        }
+    }
+}
+
 /// After a straight-key press, schedule an automatic letter commit once the key
 /// has been idle for an inter-character gap — just like releasing a real key.
 /// `key_gen` is bumped on every key event; if it changed while we waited, the
@@ -95,7 +161,7 @@ fn schedule_autocommit(
 
 #[component]
 fn App() -> Element {
-    let mut trainer = use_signal(|| Trainer::restore(platform::load_scores(), platform::seed()));
+    let trainer = use_signal(|| Trainer::restore(platform::load_scores(), platform::seed()));
     let wpm = use_signal(|| 15u32); // character speed
     let eff_wpm = use_signal(|| 15u32); // effective (Farnsworth) speed, <= wpm
     let drill = use_signal(|| Drill::SeeCodeTypeLetter);
@@ -111,16 +177,14 @@ fn App() -> Element {
 
     let timing = current_timing(wpm, eff_wpm);
 
-    // --- answer handlers -------------------------------------------------
-
-    // Recognition answer: the learner picked a letter.
-    let mut answer_letter = move |letter: char| {
-        let judgement = trainer.write().submit(letter);
-        flash.set(Some(judgement));
-        buffer.set(String::new());
-        platform::save_scores(&trainer.read().scores());
-        play_if_audio(trainer, drill, timing);
-    };
+    // Register a document-level keyboard listener once, so the app is fully
+    // playable from a physical keyboard without clicking to focus.
+    #[cfg(target_arch = "wasm32")]
+    use_hook(move || {
+        platform::on_keydown(move |key| {
+            handle_key(trainer, buffer, flash, drill, wpm, eff_wpm, &key)
+        });
+    });
 
     // --- derived view state ----------------------------------------------
 
@@ -199,7 +263,8 @@ fn App() -> Element {
             // ---- answer area: depends on the drill ----
             match current.answer() {
                 Answer::TypeLetter => rsx! {
-                    LetterPad { trainer, on_pick: move |c| answer_letter(c) }
+                    LetterPad { trainer, on_pick: move |c| answer_letter(trainer, buffer, flash, drill, timing, c) }
+                    p { class: "kbdhint", "tap a letter — or type a–z on a keyboard" }
                 },
                 Answer::SendCode => rsx! {
                     div { class: "buffer",
@@ -261,6 +326,7 @@ fn App() -> Element {
                             "enter"
                         }
                     }
+                    p { class: "kbdhint", "keyboard:  . or j = dit  ·  - or k = dah  ·  space/enter = commit  ·  ⌫ = clear" }
                 },
             }
         }

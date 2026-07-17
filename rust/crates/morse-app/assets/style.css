@@ -161,6 +161,8 @@ html, body {
 .letter-key:active { transform: scale(0.94); }
 .key.straight { flex: 1; padding: 40px; font-size: 20px; touch-action: none; }
 
+.kbdhint { text-align: center; font-size: 12px; opacity: 0.65; margin: 2px 0 0; }
+
 .keys { display: flex; gap: 12px; }
 .keys.secondary { margin-top: -4px; }
 .key {

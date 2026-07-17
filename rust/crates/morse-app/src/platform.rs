@@ -136,6 +136,37 @@ pub fn play_code(code: &str, timing: morse_core::Timing) {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn play_code(_code: &str, _timing: morse_core::Timing) {}
 
+// ---- keyboard: a document-level keydown listener ------------------------
+
+/// Register a global `keydown` handler receiving each key's name (e.g. ".",
+/// "Enter", "a"). If the handler returns `true` the key is treated as consumed
+/// and its default action is suppressed. Key auto-repeat is ignored. The
+/// listener lives for the app's lifetime.
+#[cfg(target_arch = "wasm32")]
+pub fn on_keydown(mut handler: impl FnMut(String) -> bool + 'static) {
+    use wasm_bindgen::closure::Closure;
+    use wasm_bindgen::JsCast;
+
+    let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+        return;
+    };
+    let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
+        if event.repeat() {
+            return;
+        }
+        if handler(event.key()) {
+            event.prevent_default();
+        }
+    }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+
+    let _ = document
+        .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
+    closure.forget(); // keep the listener alive for the app's lifetime
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn on_keydown(_handler: impl FnMut(String) -> bool + 'static) {}
+
 /// Keep the import referenced on every platform so the module always compiles.
 #[allow(dead_code)]
 const _LETTER_COUNT_CHECK: usize = LEARNING_ORDER.len();
