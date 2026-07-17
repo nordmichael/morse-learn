@@ -51,7 +51,7 @@ touching a single game rule.
 rustup target add wasm32-unknown-unknown        # web target
 
 # The Dioxus CLI drives builds/serving for every platform
-cargo install dioxus-cli --version 0.6.3 --locked   # provides `dx`
+cargo install dioxus-cli --version ^0.7 --locked    # provides `dx` (match the dioxus 0.7 crate)
 ```
 
 ## Run the core tests (no browser needed)
@@ -87,7 +87,7 @@ worker, which the asset-hashing pipeline doesn't emit yet.)
 
 ## Build the phone app
 
-Dioxus 0.6 builds native mobile apps through the same CLI. You need the platform
+Dioxus 0.7 builds native mobile apps through the same CLI. You need the platform
 SDKs installed (Android Studio / Xcode).
 
 ```sh
