@@ -8,15 +8,22 @@ in a small, dependency-free, fully-tested core crate.
 The original Phaser/JavaScript version is still in the repository root and is
 used only as the behavioural spec; nothing here depends on it.
 
-**Assets are original.** The 26 mnemonic icons (`assets/mnemonics/*.svg`) and
-the app icon are original flat-style SVGs authored for this project — none of
-Google's images/sounds are reused. Each mnemonic is a **"shape-as-Morse"** icon:
-a letter-initial object drawn so its form suggests the code (a round part = a
-dot, a long part = a dash — e.g. Arrow `.-`, Snowman `...`, Robot `.-.`), with a
-subtle built-in dot/dash strip so the exact pattern is always readable. The one
-piece still derived from the original is the practice word pool in
-`morse-core/src/words.rs` (ported from `words.js`); swap that out too if you
-want the rewrite entirely free of the original's content.
+**All content is original — nothing is copied from the original game.**
+
+- The 26 mnemonic icons (`assets/mnemonics/*.svg`) and the app icon are original
+  flat-style SVGs authored for this project. Each mnemonic is a
+  **"shape-as-Morse"** icon: a letter-initial object drawn so its form suggests
+  the code (a round part = a dot, a long part = a dash — e.g. Arrow `.-`,
+  Snowman `...`, Robot `.-.`), with a subtle built-in dot/dash strip so the exact
+  pattern is always readable.
+- The practice word pool (`morse-core/src/words.rs`) is **generated**, not copied:
+  the most common English words (by frequency) that are real dictionary words,
+  2–8 letters, nothing offensive, selected so every letter in the learning order
+  has words using only the letters introduced up to that point.
+
+Because none of Google's images, sounds, or word file are reused, and Morse code
+itself is a public standard, the rewrite carries no copyright ties to the
+original and can be licensed however you choose.
 
 ## Why this stack
 
