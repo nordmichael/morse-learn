@@ -79,8 +79,11 @@ dx build --platform web --release
 # artifacts in target/dx/morse-app/release/web/public
 ```
 
-Because it's a static WASM bundle, adding a web manifest + service worker turns
-it into an installable **PWA** with no extra tooling.
+It ships a **web app manifest** (`assets/manifest.webmanifest`, self-contained
+with a data-URI icon) plus `theme-color` and Apple touch-icon/web-app meta tags,
+so it's **installable** to the home screen on Android and iOS out of the box.
+(Offline caching via a service worker is a follow-up — it needs a root-scoped
+worker, which the asset-hashing pipeline doesn't emit yet.)
 
 ## Build the phone app
 
@@ -115,6 +118,10 @@ letter is practised as recognition *and* production:
   effective speed below the character speed and it switches to **Farnsworth**
   (letters at full speed, gaps stretched) — the recommended way to build speed
   without plateauing.
+- **Auto speed-ramp** (optional): a rolling-accuracy coach (`morse-core::coach`)
+  nudges the speed up when you're ~90%+ accurate over the last 10 answers and
+  eases it back when you slip, closing the Farnsworth gap first, then raising the
+  character speed. Live accuracy is shown next to the toggle.
 - **Audio** is a clean 600 Hz sidetone generated from the same timing, so what
   you hear matches what you'd key.
 - **Two input methods**, toggled live:
@@ -145,6 +152,9 @@ All of this is in `morse-core/src/trainer.rs` and exercised by `cargo test`.
 
 ## Suggested next steps
 
-1. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
-2. **PWA manifest + service worker** for offline install.
-3. **Native shells via `uniffi`** if you later want fully-native mobile UI.
+1. **Offline service worker** — precache the WASM + assets for full offline use
+   (needs a root-scoped worker; today the installable manifest ships, but not
+   offline caching, because the asset pipeline hashes paths under `/assets/`).
+2. **Native shells via `uniffi`** — only if you later want a *fully-native*
+   SwiftUI/Kotlin UI reusing `morse-core`. Not required for mobile: Dioxus
+   already builds this same app for Android and iOS.

@@ -130,6 +130,7 @@ html, body {
   background: var(--dim); color: var(--ink); cursor: pointer; transition: background 0.2s ease;
 }
 .tab.on { background: var(--paper); color: var(--bg); }
+.acc { align-self: center; font-size: 12px; opacity: 0.85; font-weight: 600; }
 
 /* ---- prompt area ---- */
 .prompt {

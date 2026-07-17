@@ -11,6 +11,7 @@
 
 pub mod alphabet;
 pub mod audio;
+pub mod coach;
 pub mod keyer;
 pub mod mode;
 pub mod rng;
@@ -20,6 +21,7 @@ pub mod words;
 
 pub use alphabet::{from_morse, to_morse, LEARNING_ORDER};
 pub use audio::{schedule_code, schedule_text, total_duration_ms, Tone};
+pub use coach::{SpeedAdvice, SpeedCoach};
 pub use keyer::{Gap, Keyer, Symbol};
 pub use mode::{Answer, Drill, InputMethod, Prompt};
 pub use timing::{Timing, MAX_WPM, MIN_WPM};

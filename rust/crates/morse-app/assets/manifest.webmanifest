@@ -1,0 +1,19 @@
+{
+  "name": "Morse Learn",
+  "short_name": "Morse",
+  "description": "Learn Morse code both ways \u2014 by ear and by key.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ef4136",
+  "theme_color": "#ef4136",
+  "icons": [
+    {
+      "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAABHNCSVQICAgIfAhkiAAAAUZJREFUWIXtljFug0AUROdvRGtcp4UDUBjJjRtKVziH4AaO3NHDDXwImxNQW4oLDgCta1NHMCkSpQq7BhM5Upj678zT7t+/C0ya9N8lfYoZRVZdFiGIEMIFW3kGAFG8gHKGILNdL5P9/n10gGuw3IBNSoijN2QFedrO89PxFl9lKmAcqzrwE7I9mMIBgBCHbA914CeMY6O/cQfqwE9aytZU95OUMLXzt9fBANdguSHbw5Dw7wBRL7rj6NwiRpEFNuk94Z9GTcoosnoD1GUR3nLmxnyIU5dF2BsAROeiARQDAISL0QA0Xt098DVkxpDOy3hPf1udAKJ4GStE56VpQjmPBaDz0jQhstEANF6dALbrZQJW92ezsl2vE+DvjmIAmOenoxIOHsdKmJqeZeM1nK3WuyEQSpjOVuudqe7hH5KHf8kmTZr0AdHvlSTEUXHqAAAAAElFTkSuQmCC",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
