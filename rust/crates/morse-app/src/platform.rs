@@ -1,15 +1,18 @@
-// Platform glue: a random seed and progress persistence.
+// Platform glue: random seed, persistence, a clock, and audio playback.
 //
-// These are the only two things the trainer needs from the outside world, and
-// they differ per platform. On the web we use the browser clock + localStorage;
-// on native targets (desktop/mobile dev) we fall back to the system clock and
-// keep progress in memory. Everything else in the app is platform-agnostic.
+// These are the only things the app needs from the outside world, and they
+// differ per platform. On the web we use the browser clock, localStorage, and
+// the Web Audio API; on native targets (desktop/mobile dev) they degrade to
+// no-ops or the system clock. Everything else in the app is platform-agnostic.
 
 use morse_core::LEARNING_ORDER;
 
 const STORAGE_KEY: &str = "morse_scores";
+/// Sidetone frequency in Hz — a comfortable CW pitch.
+const TONE_HZ: f32 = 600.0;
 
-/// A seed for the word-shuffling RNG. Variety across sessions, nothing more.
+// ---- random seed --------------------------------------------------------
+
 #[cfg(target_arch = "wasm32")]
 pub fn seed() -> u64 {
     (js_sys::Date::now() as u64) ^ 0x9E37_79B9_7F4A_7C15
@@ -24,13 +27,24 @@ pub fn seed() -> u64 {
         .unwrap_or(0x9E37_79B9_7F4A_7C15)
 }
 
-/// Load saved per-letter scores, indexed like `LEARNING_ORDER`. Returns all
-/// zeroes for a first-time player or if nothing is stored.
+// ---- a millisecond clock (for straight-key press timing) ----------------
+
+#[cfg(target_arch = "wasm32")]
+pub fn now_ms() -> f64 {
+    js_sys::Date::now()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn now_ms() -> f64 {
+    0.0
+}
+
+// ---- progress persistence -----------------------------------------------
+
 #[cfg(target_arch = "wasm32")]
 pub fn load_scores() -> [i32; 26] {
     let mut scores = [0; 26];
     if let Some(raw) = local_storage().and_then(|s| s.get_item(STORAGE_KEY).ok().flatten()) {
-        // Stored as 26 comma-separated integers in learning order.
         for (slot, part) in scores.iter_mut().zip(raw.split(',')) {
             if let Ok(v) = part.trim().parse::<i32>() {
                 *slot = v;
@@ -45,7 +59,6 @@ pub fn load_scores() -> [i32; 26] {
     [0; 26]
 }
 
-/// Persist per-letter scores. No-op off the web (dev builds keep state in RAM).
 #[cfg(target_arch = "wasm32")]
 pub fn save_scores(scores: &[i32; 26]) {
     let encoded = scores
@@ -66,7 +79,63 @@ fn local_storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
 
-/// Keep the import referenced on every platform so the module always compiles
-/// cleanly regardless of which `cfg` branches are active.
+// ---- audio: play a Morse code as a sidetone -----------------------------
+
+// Keep the AudioContext alive until playback finishes. Starting a new tone
+// replaces (and drops) the previous context, which stops any earlier tone.
+#[cfg(target_arch = "wasm32")]
+thread_local! {
+    static AUDIO_CTX: std::cell::RefCell<Option<web_sys::AudioContext>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Play a single character's Morse code at the given WPM.
+#[cfg(target_arch = "wasm32")]
+pub fn play_code(code: &str, wpm: u32) {
+    use morse_core::{schedule_code, Timing};
+
+    let tones = schedule_code(code, &Timing::new(wpm));
+    if tones.is_empty() {
+        return;
+    }
+
+    let Ok(ctx) = web_sys::AudioContext::new() else {
+        return;
+    };
+    let _ = ctx.resume(); // browsers may start the context suspended
+
+    let start = ctx.current_time();
+    let osc = ctx.create_oscillator().expect("oscillator");
+    osc.set_type(web_sys::OscillatorType::Sine);
+    osc.frequency().set_value(TONE_HZ);
+
+    let gain = ctx.create_gain().expect("gain");
+    gain.gain().set_value(0.0);
+    let _ = osc.connect_with_audio_node(&gain);
+    let _ = gain.connect_with_audio_node(&ctx.destination());
+
+    // 5ms attack/release keeps the keying click-free.
+    let edge = 0.005;
+    let param = gain.gain();
+    for tone in &tones {
+        let on = start + tone.start_ms as f64 / 1000.0;
+        let off = on + tone.len_ms as f64 / 1000.0;
+        let _ = param.set_value_at_time(0.0, (on - edge).max(start));
+        let _ = param.linear_ramp_to_value_at_time(0.6, on + edge);
+        let _ = param.set_value_at_time(0.6, (off - edge).max(on + edge));
+        let _ = param.linear_ramp_to_value_at_time(0.0, off);
+    }
+
+    let total = tones.last().map(|t| t.start_ms + t.len_ms).unwrap_or(0);
+    let _ = osc.start();
+    let _ = osc.stop_with_when(start + total as f64 / 1000.0 + 0.05);
+
+    AUDIO_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn play_code(_code: &str, _wpm: u32) {}
+
+/// Keep the import referenced on every platform so the module always compiles.
 #[allow(dead_code)]
 const _LETTER_COUNT_CHECK: usize = LEARNING_ORDER.len();

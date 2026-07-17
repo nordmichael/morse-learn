@@ -114,6 +114,51 @@ html, body {
 }
 .buffer-empty { font-size: 15px; letter-spacing: normal; opacity: 0.6; font-weight: 400; }
 
+/* ---- settings bar ---- */
+.settings { display: flex; flex-direction: column; gap: 10px; }
+.wpm { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.wpm-value { font-weight: 700; font-size: 16px; min-width: 84px; text-align: center; }
+.chip {
+  width: 40px; height: 40px; border: none; border-radius: 12px;
+  background: var(--paper); color: var(--bg); font-size: 22px; font-weight: 700; cursor: pointer;
+}
+.drills, .method { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.tab {
+  border: none; border-radius: 999px; padding: 8px 12px; font-size: 13px; font-weight: 600;
+  background: var(--dim); color: var(--ink); cursor: pointer; transition: background 0.2s ease;
+}
+.tab.on { background: var(--paper); color: var(--bg); }
+
+/* ---- prompt area ---- */
+.prompt {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 120px; border-radius: 20px; transition: background 0.2s ease;
+}
+.prompt-letter { font-size: clamp(64px, 22vw, 120px); font-weight: 700; }
+.prompt-code { font-size: clamp(44px, 14vw, 84px); font-weight: 700; letter-spacing: 8px; }
+.play {
+  border: none; border-radius: 16px; padding: 26px 40px; font-size: 26px; font-weight: 700;
+  background: var(--paper); color: var(--bg); cursor: pointer;
+}
+
+/* ---- word progress slots ---- */
+.slots { display: flex; gap: 6px; justify-content: center; min-height: 40px; }
+.slot {
+  font-size: 30px; font-weight: 700; opacity: 0.4; min-width: 24px; text-align: center;
+}
+.slot.done { opacity: 0.85; }
+.slot.active { opacity: 1; transform: translateY(-4px); }
+
+/* ---- letter pad (recognition answers) ---- */
+.letterpad { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.letter-key {
+  min-width: 52px; min-height: 52px; border: none; border-radius: 12px;
+  background: var(--paper); color: var(--bg); font-size: 24px; font-weight: 700; cursor: pointer;
+  transition: transform 0.08s ease;
+}
+.letter-key:active { transform: scale(0.94); }
+.key.straight { flex: 1; padding: 40px; font-size: 20px; touch-action: none; }
+
 .keys { display: flex; gap: 12px; }
 .keys.secondary { margin-top: -4px; }
 .key {

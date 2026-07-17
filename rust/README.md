@@ -27,11 +27,15 @@ rust/
     │       ├── alphabet.rs      # Morse table + conversions
     │       ├── words.rs         # practice word pool (ported from words.js)
     │       ├── rng.rs           # tiny dependency-free PRNG (for word shuffling)
+    │       ├── timing.rs        # WPM → dit/dah/gap durations (+ Farnsworth)
+    │       ├── audio.rs         # Morse → tone schedule (beep start/length)
+    │       ├── keyer.rs         # two-key & straight-key (press-length) decoding
+    │       ├── mode.rs          # drill modes + input methods
     │       └── trainer.rs       # scoring, letter progression, hints, word choice
     └── morse-app/              # Dioxus UI (web / mobile / desktop)
         ├── src/
         │   ├── main.rs          # components + rsx
-        │   └── platform.rs      # seed + localStorage, cfg-gated per target
+        │   └── platform.rs      # seed, localStorage, clock, Web Audio playback
         └── assets/              # css, mnemonic images, dot/dash sounds
 ```
 
@@ -94,6 +98,31 @@ dx serve --platform ios
 `dx bundle --platform android --release` / `--platform ios` produce the
 installable `.apk`/`.aab` and `.app`/`.ipa` for the stores.
 
+## Learning features
+
+The trainer drills **both directions** of the skill plus listening, so the same
+letter is practised as recognition *and* production:
+
+| Drill | Prompt | Answer | Skill |
+| --- | --- | --- | --- |
+| See code → letter | dots/dashes shown | pick the letter | visual recognition |
+| See letter → send | letter shown | key the code | production / sending |
+| Hear → send (echo) | code played | key the code | intermediate ear→hand |
+| Hear → letter | code played | pick the letter | head-copy / receiving |
+
+- **Speed** runs from 5 to **40 WPM** (the learner's ceiling), using standard
+  PARIS timing. `Timing::farnsworth()` additionally supports character-fast /
+  gap-slow practice, the recommended way to build speed without plateauing.
+- **Audio** is a clean 600 Hz sidetone generated from the same timing, so what
+  you hear matches what you'd key.
+- **Two input methods**, toggled live:
+  - **Two keys** — one for dit, one for dah (paddle style).
+  - **Straight key** — a single key where *press length* decides dit vs dah,
+    like a real Morse key. The dit/dah threshold tracks the current WPM.
+
+All of the above (timing math, tone schedule, press/gap classification, drill
+definitions) lives in `morse-core` and is unit-tested — the UI just renders it.
+
 ## How the trainer works (ported rules)
 
 - Letters are taught in frequency order: `e t a i m s o h n c r d u k l f b p g j v q w x y z`.
@@ -110,9 +139,12 @@ All of this is in `morse-core/src/trainer.rs` and exercised by `cargo test`.
 
 ## Suggested next steps
 
-1. **Audio** — play the dot/dash samples on tap (they're already in `assets/`).
-2. **Keyboard input** on web/desktop (`.`/`-`, Enter to commit).
-3. **Timing-based input** — detect dot vs dash from press duration, like a real
-   straight key, entirely in `morse-core` so every platform benefits.
-4. **PWA manifest + service worker** for offline install.
-5. **Native shells via `uniffi`** if you later want fully-native mobile UI.
+1. **Auto-commit on gap** — for the straight key, end a letter after a silence
+   (`Keyer::gap` already classifies it) instead of tapping "enter".
+2. **Physical keyboard** on web/desktop (`.`/`-`, Enter to commit; letter keys
+   for recognition drills).
+3. **Farnsworth UI** — expose a separate character-speed vs effective-speed
+   slider (the core already supports it via `Timing::farnsworth`).
+4. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
+5. **PWA manifest + service worker** for offline install.
+6. **Native shells via `uniffi`** if you later want fully-native mobile UI.
