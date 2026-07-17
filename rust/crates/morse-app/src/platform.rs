@@ -89,12 +89,12 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-/// Play a single character's Morse code at the given WPM.
+/// Play a single character's Morse code with the given timing.
 #[cfg(target_arch = "wasm32")]
-pub fn play_code(code: &str, wpm: u32) {
-    use morse_core::{schedule_code, Timing};
+pub fn play_code(code: &str, timing: morse_core::Timing) {
+    use morse_core::schedule_code;
 
-    let tones = schedule_code(code, &Timing::new(wpm));
+    let tones = schedule_code(code, &timing);
     if tones.is_empty() {
         return;
     }
@@ -134,7 +134,7 @@ pub fn play_code(code: &str, wpm: u32) {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn play_code(_code: &str, _wpm: u32) {}
+pub fn play_code(_code: &str, _timing: morse_core::Timing) {}
 
 /// Keep the import referenced on every platform so the module always compiles.
 #[allow(dead_code)]

@@ -24,27 +24,92 @@ fn main() {
     dioxus::launch(App);
 }
 
-/// Play the current target's code if the active drill is an audio one. Free
-/// function (not a closure) so multiple event handlers can call it — `Signal`
-/// is `Copy`, so we just pass the handles in.
-fn play_if_audio(trainer: Signal<Trainer>, drill: Signal<Drill>, wpm: Signal<u32>) {
+/// The active timing from the character-speed and effective-speed signals.
+/// When they're equal this is standard PARIS timing; when effective is lower it
+/// is Farnsworth (characters at full speed, gaps stretched).
+fn current_timing(char_wpm: Signal<u32>, eff_wpm: Signal<u32>) -> Timing {
+    Timing::farnsworth(char_wpm(), eff_wpm())
+}
+
+/// Play the current target's code if the active drill is an audio one. These are
+/// free functions (not closures) so event handlers and the gap timer can all
+/// call them — `Signal` is `Copy`, so we just pass the handles in.
+fn play_if_audio(trainer: Signal<Trainer>, drill: Signal<Drill>, timing: Timing) {
     if drill().is_audio() {
-        platform::play_code(trainer.read().target_morse(), wpm());
+        platform::play_code(trainer.read().target_morse(), timing);
     }
+}
+
+/// Commit the keyed Morse in `buffer` as an answer, flash the result, persist,
+/// and (for audio drills) play the next target.
+fn commit_code(
+    mut trainer: Signal<Trainer>,
+    mut buffer: Signal<String>,
+    mut flash: Signal<Option<Judgement>>,
+    drill: Signal<Drill>,
+    timing: Timing,
+) {
+    if buffer().is_empty() {
+        return;
+    }
+    let judgement = trainer.write().submit_morse(&buffer());
+    flash.set(Some(judgement));
+    buffer.set(String::new());
+    platform::save_scores(&trainer.read().scores());
+    play_if_audio(trainer, drill, timing);
+}
+
+/// After a straight-key press, schedule an automatic letter commit once the key
+/// has been idle for an inter-character gap — just like releasing a real key.
+/// `key_gen` is bumped on every key event; if it changed while we waited, the
+/// user kept keying, so we don't commit.
+#[cfg(target_arch = "wasm32")]
+fn schedule_autocommit(
+    trainer: Signal<Trainer>,
+    buffer: Signal<String>,
+    flash: Signal<Option<Judgement>>,
+    drill: Signal<Drill>,
+    key_gen: Signal<u64>,
+    timing: Timing,
+) {
+    let generation = key_gen();
+    let delay = timing.char_gap_ms();
+    spawn(async move {
+        gloo_timers::future::TimeoutFuture::new(delay).await;
+        if key_gen() == generation && !buffer().is_empty() {
+            commit_code(trainer, buffer, flash, drill, timing);
+        }
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn schedule_autocommit(
+    _trainer: Signal<Trainer>,
+    _buffer: Signal<String>,
+    _flash: Signal<Option<Judgement>>,
+    _drill: Signal<Drill>,
+    _key_gen: Signal<u64>,
+    _timing: Timing,
+) {
 }
 
 #[component]
 fn App() -> Element {
     let mut trainer = use_signal(|| Trainer::restore(platform::load_scores(), platform::seed()));
-    let wpm = use_signal(|| 15u32);
+    let wpm = use_signal(|| 15u32); // character speed
+    let eff_wpm = use_signal(|| 15u32); // effective (Farnsworth) speed, <= wpm
     let drill = use_signal(|| Drill::SeeCodeTypeLetter);
     let method = use_signal(|| InputMethod::TwoKey);
 
     // In-progress Morse for "send" answers, and the straight-key press start.
     let mut buffer = use_signal(String::new);
     let mut press_start = use_signal(|| Option::<f64>::None);
+    // Bumped on every key event so a pending auto-commit can tell it's stale.
+    let mut key_gen = use_signal(|| 0u64);
     // Last judgement, used to flash the prompt green/red.
     let mut flash = use_signal(|| Option::<Judgement>::None);
+
+    let timing = current_timing(wpm, eff_wpm);
 
     // --- answer handlers -------------------------------------------------
 
@@ -54,19 +119,7 @@ fn App() -> Element {
         flash.set(Some(judgement));
         buffer.set(String::new());
         platform::save_scores(&trainer.read().scores());
-        play_if_audio(trainer, drill, wpm);
-    };
-
-    // Production answer: commit the keyed Morse in the buffer.
-    let mut commit_code = move || {
-        if buffer().is_empty() {
-            return;
-        }
-        let judgement = trainer.write().submit_morse(&buffer());
-        flash.set(Some(judgement));
-        buffer.set(String::new());
-        platform::save_scores(&trainer.read().scores());
-        play_if_audio(trainer, drill, wpm);
+        play_if_audio(trainer, drill, timing);
     };
 
     // --- derived view state ----------------------------------------------
@@ -109,7 +162,7 @@ fn App() -> Element {
 
         main { class: "app",
             // ---- settings: speed, drill, key method ----
-            SettingsBar { wpm, drill, method, buffer, press_start }
+            SettingsBar { wpm, eff_wpm, drill, method, buffer, press_start }
 
             // ---- progress ----
             header { class: "top",
@@ -133,7 +186,7 @@ fn App() -> Element {
                     Prompt::HearCode => rsx! {
                         button {
                             class: "play",
-                            onclick: move |_| platform::play_code(trainer.read().target_morse(), wpm()),
+                            onclick: move |_| platform::play_code(trainer.read().target_morse(), timing),
                             "🔊 play"
                         }
                     },
@@ -175,14 +228,21 @@ fn App() -> Element {
                             div { class: "keys",
                                 button {
                                     class: "key straight",
-                                    onpointerdown: move |_| { flash.set(None); press_start.set(Some(platform::now_ms())); },
+                                    onpointerdown: move |_| {
+                                        flash.set(None);
+                                        key_gen.with_mut(|g| *g += 1); // cancel any pending auto-commit
+                                        press_start.set(Some(platform::now_ms()));
+                                    },
                                     onpointerup: move |_| {
                                         if let Some(started) = press_start() {
                                             let held = (platform::now_ms() - started).max(0.0) as u32;
-                                            let symbol = Timing::new(wpm()).classify_press(held);
+                                            let symbol = timing.classify_press(held);
                                             buffer.with_mut(|b| b.push(symbol.as_char()));
                                         }
                                         press_start.set(None);
+                                        // Auto-commit the letter after an inter-character gap.
+                                        key_gen.with_mut(|g| *g += 1);
+                                        schedule_autocommit(trainer, buffer, flash, drill, key_gen, timing);
                                     },
                                     "press · short / long —"
                                 }
@@ -190,8 +250,16 @@ fn App() -> Element {
                         },
                     }
                     div { class: "keys secondary",
-                        button { class: "key clear", onclick: move |_| buffer.set(String::new()), "clear" }
-                        button { class: "key enter", onclick: move |_| commit_code(), "enter" }
+                        button {
+                            class: "key clear",
+                            onclick: move |_| { key_gen.with_mut(|g| *g += 1); buffer.set(String::new()); },
+                            "clear"
+                        }
+                        button {
+                            class: "key enter",
+                            onclick: move |_| commit_code(trainer, buffer, flash, drill, timing),
+                            "enter"
+                        }
                     }
                 },
             }
@@ -203,12 +271,14 @@ fn App() -> Element {
 #[component]
 fn SettingsBar(
     wpm: Signal<u32>,
+    eff_wpm: Signal<u32>,
     drill: Signal<Drill>,
     method: Signal<InputMethod>,
     buffer: Signal<String>,
     press_start: Signal<Option<f64>>,
 ) -> Element {
     let mut wpm = wpm;
+    let mut eff_wpm = eff_wpm;
     let mut drill = drill;
     let mut method = method;
     let mut buffer = buffer;
@@ -217,20 +287,45 @@ fn SettingsBar(
     let drills = Drill::all();
     let current = drill();
     let show_method = current.answer() == Answer::SendCode;
+    let farnsworth = eff_wpm() < wpm();
 
     rsx! {
         div { class: "settings",
-            // speed
+            // character speed
             div { class: "wpm",
+                span { class: "wpm-label", "char" }
                 button {
                     class: "chip",
-                    onclick: move |_| wpm.with_mut(|w| *w = w.saturating_sub(1).max(MIN_WPM)),
+                    onclick: move |_| {
+                        wpm.with_mut(|w| *w = w.saturating_sub(1).max(MIN_WPM));
+                        // keep effective speed at or below character speed
+                        eff_wpm.with_mut(|e| *e = (*e).min(wpm()));
+                    },
                     "−"
                 }
                 span { class: "wpm-value", "{wpm()} WPM" }
                 button {
                     class: "chip",
                     onclick: move |_| wpm.with_mut(|w| *w = (*w + 1).min(MAX_WPM)),
+                    "+"
+                }
+            }
+
+            // effective (Farnsworth) speed
+            div { class: "wpm",
+                span { class: "wpm-label", "effective" }
+                button {
+                    class: "chip",
+                    onclick: move |_| eff_wpm.with_mut(|e| *e = e.saturating_sub(1).max(MIN_WPM)),
+                    "−"
+                }
+                span {
+                    class: if farnsworth { "wpm-value farnsworth" } else { "wpm-value" },
+                    "{eff_wpm()} WPM"
+                }
+                button {
+                    class: "chip",
+                    onclick: move |_| eff_wpm.with_mut(|e| *e = (*e + 1).min(wpm())),
                     "+"
                 }
             }

@@ -116,8 +116,10 @@ html, body {
 
 /* ---- settings bar ---- */
 .settings { display: flex; flex-direction: column; gap: 10px; }
-.wpm { display: flex; align-items: center; justify-content: center; gap: 12px; }
+.wpm { display: flex; align-items: center; justify-content: center; gap: 10px; }
+.wpm-label { font-size: 12px; opacity: 0.8; min-width: 62px; text-align: right; }
 .wpm-value { font-weight: 700; font-size: 16px; min-width: 84px; text-align: center; }
+.wpm-value.farnsworth { color: var(--bg-accent); }
 .chip {
   width: 40px; height: 40px; border: none; border-radius: 12px;
   background: var(--paper); color: var(--bg); font-size: 22px; font-weight: 700; cursor: pointer;

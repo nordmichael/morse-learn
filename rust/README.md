@@ -110,15 +110,18 @@ letter is practised as recognition *and* production:
 | Hear → send (echo) | code played | key the code | intermediate ear→hand |
 | Hear → letter | code played | pick the letter | head-copy / receiving |
 
-- **Speed** runs from 5 to **40 WPM** (the learner's ceiling), using standard
-  PARIS timing. `Timing::farnsworth()` additionally supports character-fast /
-  gap-slow practice, the recommended way to build speed without plateauing.
+- **Speed** runs from 5 to **40 WPM** (the learner's ceiling) on standard PARIS
+  timing, with a separate **character** and **effective** control: lower the
+  effective speed below the character speed and it switches to **Farnsworth**
+  (letters at full speed, gaps stretched) — the recommended way to build speed
+  without plateauing.
 - **Audio** is a clean 600 Hz sidetone generated from the same timing, so what
   you hear matches what you'd key.
 - **Two input methods**, toggled live:
   - **Two keys** — one for dit, one for dah (paddle style).
   - **Straight key** — a single key where *press length* decides dit vs dah,
-    like a real Morse key. The dit/dah threshold tracks the current WPM.
+    like a real Morse key. The dit/dah threshold tracks the current WPM, and the
+    letter **auto-commits after an inter-character gap** (no button needed).
 
 All of the above (timing math, tone schedule, press/gap classification, drill
 definitions) lives in `morse-core` and is unit-tested — the UI just renders it.
@@ -139,12 +142,8 @@ All of this is in `morse-core/src/trainer.rs` and exercised by `cargo test`.
 
 ## Suggested next steps
 
-1. **Auto-commit on gap** — for the straight key, end a letter after a silence
-   (`Keyer::gap` already classifies it) instead of tapping "enter".
-2. **Physical keyboard** on web/desktop (`.`/`-`, Enter to commit; letter keys
+1. **Physical keyboard** on web/desktop (`.`/`-`, Enter to commit; letter keys
    for recognition drills).
-3. **Farnsworth UI** — expose a separate character-speed vs effective-speed
-   slider (the core already supports it via `Timing::farnsworth`).
-4. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
-5. **PWA manifest + service worker** for offline install.
-6. **Native shells via `uniffi`** if you later want fully-native mobile UI.
+2. **Per-drill scoring / speed ramp** — auto-raise WPM as accuracy holds.
+3. **PWA manifest + service worker** for offline install.
+4. **Native shells via `uniffi`** if you later want fully-native mobile UI.
