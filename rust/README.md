@@ -8,6 +8,13 @@ in a small, dependency-free, fully-tested core crate.
 The original Phaser/JavaScript version is still in the repository root and is
 used only as the behavioural spec; nothing here depends on it.
 
+**Assets are original.** The 26 mnemonic icons (`assets/mnemonics/*.svg`,
+A = Apple … Z = Zipper) and the app icon are original flat-style SVGs authored
+for this project — none of Google's images/sounds are reused. The one piece
+still derived from the original is the practice word pool in
+`morse-core/src/words.rs` (ported from `words.js`); swap that out too if you
+want the rewrite entirely free of the original's content.
+
 ## Why this stack
 
 | Goal | How it's met |

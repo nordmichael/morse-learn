@@ -505,35 +505,35 @@ fn Hint(letter: char, level: morse_core::HintLevel) -> Element {
     }
 }
 
-/// Map a letter to its mnemonic image asset (same pictures as the original
-/// game: a → Archery, b → Banjo, …).
+/// Map a letter to its mnemonic image asset. These are original flat-style SVG
+/// icons (a → Apple, b → Ball, c → Cat, …), authored for this project.
 fn hint_image(letter: char) -> Asset {
     match letter.to_ascii_lowercase() {
-        'a' => asset!("/assets/png/Archery.png"),
-        'b' => asset!("/assets/png/Banjo.png"),
-        'c' => asset!("/assets/png/Candy.png"),
-        'd' => asset!("/assets/png/Dog.png"),
-        'e' => asset!("/assets/png/Eye.png"),
-        'f' => asset!("/assets/png/Firetruck.png"),
-        'g' => asset!("/assets/png/Giraffe.png"),
-        'h' => asset!("/assets/png/Hippo.png"),
-        'i' => asset!("/assets/png/Insect.png"),
-        'j' => asset!("/assets/png/Jet.png"),
-        'k' => asset!("/assets/png/Kite.png"),
-        'l' => asset!("/assets/png/Laboratory.png"),
-        'm' => asset!("/assets/png/Mustache.png"),
-        'n' => asset!("/assets/png/Net.png"),
-        'o' => asset!("/assets/png/Orchestra.png"),
-        'p' => asset!("/assets/png/Paddle.png"),
-        'q' => asset!("/assets/png/Quarterback.png"),
-        'r' => asset!("/assets/png/Robot.png"),
-        's' => asset!("/assets/png/Submarine.png"),
-        't' => asset!("/assets/png/Tape.png"),
-        'u' => asset!("/assets/png/Unicorn.png"),
-        'v' => asset!("/assets/png/Vacuum.png"),
-        'w' => asset!("/assets/png/Wand.png"),
-        'x' => asset!("/assets/png/X-ray.png"),
-        'y' => asset!("/assets/png/Yard.png"),
-        _ => asset!("/assets/png/Zebra.png"),
+        'a' => asset!("/assets/mnemonics/a.svg"),
+        'b' => asset!("/assets/mnemonics/b.svg"),
+        'c' => asset!("/assets/mnemonics/c.svg"),
+        'd' => asset!("/assets/mnemonics/d.svg"),
+        'e' => asset!("/assets/mnemonics/e.svg"),
+        'f' => asset!("/assets/mnemonics/f.svg"),
+        'g' => asset!("/assets/mnemonics/g.svg"),
+        'h' => asset!("/assets/mnemonics/h.svg"),
+        'i' => asset!("/assets/mnemonics/i.svg"),
+        'j' => asset!("/assets/mnemonics/j.svg"),
+        'k' => asset!("/assets/mnemonics/k.svg"),
+        'l' => asset!("/assets/mnemonics/l.svg"),
+        'm' => asset!("/assets/mnemonics/m.svg"),
+        'n' => asset!("/assets/mnemonics/n.svg"),
+        'o' => asset!("/assets/mnemonics/o.svg"),
+        'p' => asset!("/assets/mnemonics/p.svg"),
+        'q' => asset!("/assets/mnemonics/q.svg"),
+        'r' => asset!("/assets/mnemonics/r.svg"),
+        's' => asset!("/assets/mnemonics/s.svg"),
+        't' => asset!("/assets/mnemonics/t.svg"),
+        'u' => asset!("/assets/mnemonics/u.svg"),
+        'v' => asset!("/assets/mnemonics/v.svg"),
+        'w' => asset!("/assets/mnemonics/w.svg"),
+        'x' => asset!("/assets/mnemonics/x.svg"),
+        'y' => asset!("/assets/mnemonics/y.svg"),
+        _ => asset!("/assets/mnemonics/z.svg"),
     }
 }
