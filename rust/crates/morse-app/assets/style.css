@@ -94,15 +94,14 @@ html, body {
   min-height: 120px;
 }
 .hint.hidden { visibility: hidden; }
-.hint-img {
-  width: 96px;
-  height: 96px;
-  object-fit: contain;
-  background: var(--paper);
-  border-radius: 16px;
-  padding: 8px;
-}
-.hint-pattern { font-size: 28px; font-weight: 700; letter-spacing: 6px; }
+.mnem { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.syl { display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.syl-word { font-weight: 700; }
+.syl.dit .syl-word { font-size: 20px; opacity: 0.7; font-weight: 500; }
+.syl.dah .syl-word { font-size: 30px; letter-spacing: 1px; }
+.syl-mark { margin-top: 4px; font-size: 16px; opacity: 0.8; }
+.syl.dah .syl-mark { letter-spacing: 0; }
+.mnem-note { font-size: 13px; opacity: 0.8; margin-top: 4px; }
 
 /* ---- buffer + keys ---- */
 .buffer {

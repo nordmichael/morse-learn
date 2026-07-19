@@ -10,12 +10,14 @@ used only as the behavioural spec; nothing here depends on it.
 
 **All content is original — nothing is copied from the original game.**
 
-- The 26 mnemonic icons (`assets/mnemonics/*.svg`) and the app icon are original
-  flat-style SVGs authored for this project. Each mnemonic is a
-  **"shape-as-Morse"** icon: a letter-initial object drawn so its form suggests
-  the code (a round part = a dot, a long part = a dash — e.g. Arrow `.-`,
-  Snowman `...`, Robot `.-.`), with a subtle built-in dot/dash strip so the exact
-  pattern is always readable.
+- Letter hints are **sound-alike rhythm mnemonics** (`morse-core/src/mnemonics.rs`),
+  not pictures: a word whose spoken cadence *is* the letter's rhythm — a stressed
+  syllable for a dah, a short syllable for a dit (CO-ca-CO-la = C `-.-.`,
+  KANG-a-ROO = K `-.-`, GOD SAVE the QUEEN = Q `--.-`). Morse is a sound skill, so
+  the hook trains the rhythm rather than a visual shape; a unit test guarantees
+  every mnemonic's stress pattern matches its code. (The app also runs a
+  Koch-style, by-ear progression with Farnsworth timing and audio drills — the
+  mnemonics are an early aid that fades as you learn to copy by ear.)
 - The practice word pool (`morse-core/src/words.rs`) is **generated**, not copied:
   the most common English words (by frequency) that are real dictionary words,
   2–8 letters, nothing offensive, selected so every letter in the learning order

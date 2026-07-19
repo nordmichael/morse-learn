@@ -486,54 +486,34 @@ fn ProgressLights(trainer: Signal<Trainer>) -> Element {
     }
 }
 
-/// The mnemonic hint for the current letter: a picture whose name starts with
-/// the letter, and — once the learner has struggled — the Morse pattern too.
+/// The rhythm-mnemonic hint for the current letter: a word whose spoken cadence
+/// is the letter's Morse rhythm (stressed syllable = dah, short syllable = dit).
+/// At the higher hint level the dit/dah marks are shown under each syllable.
 #[component]
 fn Hint(letter: char, level: morse_core::HintLevel) -> Element {
     use morse_core::HintLevel;
     if level == HintLevel::None {
         return rsx! { div { class: "hint hidden" } };
     }
-    let pattern = morse_core::to_morse(letter).unwrap_or("");
+    let Some(m) = morse_core::mnemonic(letter) else {
+        return rsx! { div { class: "hint hidden" } };
+    };
+    let show_marks = level == HintLevel::Pattern;
     rsx! {
         div { class: "hint",
-            img { class: "hint-img", src: hint_image(letter), alt: "{letter}" }
-            if level == HintLevel::Pattern {
-                div { class: "hint-pattern", "{letter} = {pattern}" }
+            div { class: "mnem",
+                for (i, syl) in m.syllables.iter().enumerate() {
+                    div { key: "{i}", class: if syl.dah { "syl dah" } else { "syl dit" },
+                        span { class: "syl-word", "{syl.text}" }
+                        if show_marks {
+                            span { class: "syl-mark", if syl.dah { "—" } else { "•" } }
+                        }
+                    }
+                }
+            }
+            if let Some(note) = m.note {
+                div { class: "mnem-note", "♪ {note}" }
             }
         }
-    }
-}
-
-/// Map a letter to its mnemonic image asset. These are original flat-style SVG
-/// icons (a → Apple, b → Ball, c → Cat, …), authored for this project.
-fn hint_image(letter: char) -> Asset {
-    match letter.to_ascii_lowercase() {
-        'a' => asset!("/assets/mnemonics/a.svg"),
-        'b' => asset!("/assets/mnemonics/b.svg"),
-        'c' => asset!("/assets/mnemonics/c.svg"),
-        'd' => asset!("/assets/mnemonics/d.svg"),
-        'e' => asset!("/assets/mnemonics/e.svg"),
-        'f' => asset!("/assets/mnemonics/f.svg"),
-        'g' => asset!("/assets/mnemonics/g.svg"),
-        'h' => asset!("/assets/mnemonics/h.svg"),
-        'i' => asset!("/assets/mnemonics/i.svg"),
-        'j' => asset!("/assets/mnemonics/j.svg"),
-        'k' => asset!("/assets/mnemonics/k.svg"),
-        'l' => asset!("/assets/mnemonics/l.svg"),
-        'm' => asset!("/assets/mnemonics/m.svg"),
-        'n' => asset!("/assets/mnemonics/n.svg"),
-        'o' => asset!("/assets/mnemonics/o.svg"),
-        'p' => asset!("/assets/mnemonics/p.svg"),
-        'q' => asset!("/assets/mnemonics/q.svg"),
-        'r' => asset!("/assets/mnemonics/r.svg"),
-        's' => asset!("/assets/mnemonics/s.svg"),
-        't' => asset!("/assets/mnemonics/t.svg"),
-        'u' => asset!("/assets/mnemonics/u.svg"),
-        'v' => asset!("/assets/mnemonics/v.svg"),
-        'w' => asset!("/assets/mnemonics/w.svg"),
-        'x' => asset!("/assets/mnemonics/x.svg"),
-        'y' => asset!("/assets/mnemonics/y.svg"),
-        _ => asset!("/assets/mnemonics/z.svg"),
     }
 }
