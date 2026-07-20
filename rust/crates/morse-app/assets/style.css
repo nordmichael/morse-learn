@@ -136,6 +136,7 @@ html, body {
   display: flex; align-items: center; justify-content: center;
   min-height: 120px; border-radius: 20px; transition: background 0.2s ease;
 }
+.prompt-hear { display: flex; align-items: center; justify-content: center; gap: 20px; flex-wrap: wrap; }
 .prompt-letter { font-size: clamp(64px, 22vw, 120px); font-weight: 700; }
 .prompt-code { font-size: clamp(44px, 14vw, 84px); font-weight: 700; letter-spacing: 8px; }
 .play {

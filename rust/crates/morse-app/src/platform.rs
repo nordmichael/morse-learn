@@ -74,19 +74,61 @@ pub fn save_scores(scores: &[i32; 26]) {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn save_scores(_scores: &[i32; 26]) {}
 
+/// Load a persisted on/off setting, falling back to `default` when unset.
+#[cfg(target_arch = "wasm32")]
+pub fn load_flag(key: &str, default: bool) -> bool {
+    match local_storage().and_then(|s| s.get_item(key).ok().flatten()) {
+        Some(v) => v == "1",
+        None => default,
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_flag(_key: &str, default: bool) -> bool {
+    default
+}
+
+/// Persist an on/off setting.
+#[cfg(target_arch = "wasm32")]
+pub fn save_flag(key: &str, value: bool) {
+    if let Some(storage) = local_storage() {
+        let _ = storage.set_item(key, if value { "1" } else { "0" });
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn save_flag(_key: &str, _value: bool) {}
+
 #[cfg(target_arch = "wasm32")]
 fn local_storage() -> Option<web_sys::Storage> {
     web_sys::window()?.local_storage().ok().flatten()
 }
 
-// ---- audio: play a Morse code as a sidetone -----------------------------
+// ---- audio: shared context, Morse playback, and a held sidetone ---------
 
-// Keep the AudioContext alive until playback finishes. Starting a new tone
-// replaces (and drops) the previous context, which stops any earlier tone.
 #[cfg(target_arch = "wasm32")]
 thread_local! {
+    // One AudioContext is reused for the whole app (browsers cap how many can
+    // exist); created lazily on first sound and resumed on each use.
     static AUDIO_CTX: std::cell::RefCell<Option<web_sys::AudioContext>> =
         const { std::cell::RefCell::new(None) };
+    // The currently-held straight-key tone (gain + oscillator), if any.
+    static LIVE_TONE: std::cell::RefCell<Option<(web_sys::GainNode, web_sys::OscillatorNode)>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_arch = "wasm32")]
+fn audio_ctx() -> Option<web_sys::AudioContext> {
+    AUDIO_CTX.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if slot.is_none() {
+            *slot = web_sys::AudioContext::new().ok();
+        }
+        if let Some(ctx) = slot.as_ref() {
+            let _ = ctx.resume(); // browsers may start it suspended
+        }
+        slot.clone()
+    })
 }
 
 /// Play a single character's Morse code with the given timing.
@@ -98,11 +140,9 @@ pub fn play_code(code: &str, timing: morse_core::Timing) {
     if tones.is_empty() {
         return;
     }
-
-    let Ok(ctx) = web_sys::AudioContext::new() else {
+    let Some(ctx) = audio_ctx() else {
         return;
     };
-    let _ = ctx.resume(); // browsers may start the context suspended
 
     let start = ctx.current_time();
     let osc = ctx.create_oscillator().expect("oscillator");
@@ -129,43 +169,95 @@ pub fn play_code(code: &str, timing: morse_core::Timing) {
     let total = tones.last().map(|t| t.start_ms + t.len_ms).unwrap_or(0);
     let _ = osc.start();
     let _ = osc.stop_with_when(start + total as f64 / 1000.0 + 0.05);
+}
 
-    AUDIO_CTX.with(|slot| *slot.borrow_mut() = Some(ctx));
+/// Start a continuous sidetone for a held straight-key press. Idempotent — a
+/// second call while a tone is already sounding does nothing.
+#[cfg(target_arch = "wasm32")]
+pub fn tone_on() {
+    if LIVE_TONE.with(|t| t.borrow().is_some()) {
+        return;
+    }
+    let Some(ctx) = audio_ctx() else {
+        return;
+    };
+    let (Ok(osc), Ok(gain)) = (ctx.create_oscillator(), ctx.create_gain()) else {
+        return;
+    };
+    osc.set_type(web_sys::OscillatorType::Sine);
+    osc.frequency().set_value(TONE_HZ);
+    gain.gain().set_value(0.0);
+    let _ = osc.connect_with_audio_node(&gain);
+    let _ = gain.connect_with_audio_node(&ctx.destination());
+
+    let now = ctx.current_time();
+    let _ = gain.gain().set_value_at_time(0.0, now);
+    let _ = gain.gain().linear_ramp_to_value_at_time(0.5, now + 0.006); // click-free attack
+    let _ = osc.start();
+    LIVE_TONE.with(|t| *t.borrow_mut() = Some((gain, osc)));
+}
+
+/// Stop the continuous sidetone (on key release).
+#[cfg(target_arch = "wasm32")]
+pub fn tone_off() {
+    if let Some((gain, osc)) = LIVE_TONE.with(|t| t.borrow_mut().take()) {
+        if let Some(ctx) = audio_ctx() {
+            let now = ctx.current_time();
+            let _ = gain.gain().set_value_at_time(0.5, now);
+            let _ = gain.gain().linear_ramp_to_value_at_time(0.0, now + 0.012); // release
+            let _ = osc.stop_with_when(now + 0.04);
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn play_code(_code: &str, _timing: morse_core::Timing) {}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn tone_on() {}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn tone_off() {}
 
-// ---- keyboard: a document-level keydown listener ------------------------
+// ---- keyboard: document-level keydown / keyup listeners -----------------
 
-/// Register a global `keydown` handler receiving each key's name (e.g. ".",
-/// "Enter", "a"). If the handler returns `true` the key is treated as consumed
-/// and its default action is suppressed. Key auto-repeat is ignored. The
-/// listener lives for the app's lifetime.
+/// Register a global keyboard handler for `event` ("keydown" / "keyup"),
+/// receiving each key's name (e.g. ".", "Enter", " ", "a"). If the handler
+/// returns `true` the key is consumed and its default action suppressed. On
+/// keydown, auto-repeat is ignored (so a held key fires once). The listener
+/// lives for the app's lifetime.
 #[cfg(target_arch = "wasm32")]
-pub fn on_keydown(mut handler: impl FnMut(String) -> bool + 'static) {
+fn register_key(event: &str, ignore_repeat: bool, mut handler: impl FnMut(String) -> bool + 'static) {
     use wasm_bindgen::closure::Closure;
     use wasm_bindgen::JsCast;
 
     let Some(document) = web_sys::window().and_then(|w| w.document()) else {
         return;
     };
-    let closure = Closure::wrap(Box::new(move |event: web_sys::KeyboardEvent| {
-        if event.repeat() {
+    let closure = Closure::wrap(Box::new(move |e: web_sys::KeyboardEvent| {
+        if ignore_repeat && e.repeat() {
             return;
         }
-        if handler(event.key()) {
-            event.prevent_default();
+        if handler(e.key()) {
+            e.prevent_default();
         }
     }) as Box<dyn FnMut(web_sys::KeyboardEvent)>);
+    let _ = document.add_event_listener_with_callback(event, closure.as_ref().unchecked_ref());
+    closure.forget();
+}
 
-    let _ = document
-        .add_event_listener_with_callback("keydown", closure.as_ref().unchecked_ref());
-    closure.forget(); // keep the listener alive for the app's lifetime
+#[cfg(target_arch = "wasm32")]
+pub fn on_keydown(handler: impl FnMut(String) -> bool + 'static) {
+    register_key("keydown", true, handler);
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn on_keyup(handler: impl FnMut(String) -> bool + 'static) {
+    register_key("keyup", false, handler);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn on_keydown(_handler: impl FnMut(String) -> bool + 'static) {}
+#[cfg(not(target_arch = "wasm32"))]
+pub fn on_keyup(_handler: impl FnMut(String) -> bool + 'static) {}
 
 /// Keep the import referenced on every platform so the module always compiles.
 #[allow(dead_code)]

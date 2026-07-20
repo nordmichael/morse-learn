@@ -14,11 +14,12 @@
 /// How the current target is presented to the learner.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prompt {
-    /// Show the letter glyph; the learner produces its code.
+    /// Show the letter glyph.
     SeeLetter,
-    /// Show the dots/dashes; the learner names the letter.
+    /// Show the dots/dashes.
     SeeCode,
-    /// Play the code as audio; nothing is shown.
+    /// Play the code as audio (a drill may additionally reveal the letter — see
+    /// [`Drill::shows_letter`]).
     HearCode,
 }
 
@@ -31,26 +32,28 @@ pub enum Answer {
     SendCode,
 }
 
-/// A complete practice drill.
+/// A complete practice drill. The set is sending-focused, with one receiving
+/// (head-copy) drill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Drill {
-    /// See a letter → send its code. (Production / "sending".)
-    SeeLetterSendCode,
-    /// See the code → name the letter. (Visual recognition.)
-    SeeCodeTypeLetter,
-    /// Hear the code → name the letter. (Head-copy / "receiving".)
-    HearCodeTypeLetter,
-    /// Hear the code → send it back. (Intermediate echo step.)
+    /// Hear the code *and* see the letter → send it. Full reinforcement for
+    /// learning a new letter (ear + eye + hand).
     HearCodeSendCode,
+    /// See a letter → send its code. Recall production.
+    SeeLetterSendCode,
+    /// See the code → send it. Transcribe/echo the written code.
+    SeeCodeSendCode,
+    /// Hear the code → name the letter. Head-copy / "receiving".
+    HearCodeTypeLetter,
 }
 
 impl Drill {
     /// All drills, in a sensible learning order.
     pub fn all() -> [Drill; 4] {
         [
-            Drill::SeeCodeTypeLetter,
-            Drill::SeeLetterSendCode,
             Drill::HearCodeSendCode,
+            Drill::SeeLetterSendCode,
+            Drill::SeeCodeSendCode,
             Drill::HearCodeTypeLetter,
         ]
     }
@@ -59,7 +62,7 @@ impl Drill {
     pub fn prompt(self) -> Prompt {
         match self {
             Drill::SeeLetterSendCode => Prompt::SeeLetter,
-            Drill::SeeCodeTypeLetter => Prompt::SeeCode,
+            Drill::SeeCodeSendCode => Prompt::SeeCode,
             Drill::HearCodeTypeLetter | Drill::HearCodeSendCode => Prompt::HearCode,
         }
     }
@@ -67,8 +70,10 @@ impl Drill {
     /// How this drill expects an answer.
     pub fn answer(self) -> Answer {
         match self {
-            Drill::SeeLetterSendCode | Drill::HearCodeSendCode => Answer::SendCode,
-            Drill::SeeCodeTypeLetter | Drill::HearCodeTypeLetter => Answer::TypeLetter,
+            Drill::SeeLetterSendCode | Drill::SeeCodeSendCode | Drill::HearCodeSendCode => {
+                Answer::SendCode
+            }
+            Drill::HearCodeTypeLetter => Answer::TypeLetter,
         }
     }
 
@@ -77,12 +82,20 @@ impl Drill {
         self.prompt() == Prompt::HearCode
     }
 
+    /// Whether the letter glyph should be displayed. The see-letter drill shows
+    /// it as its prompt; hear→send also reveals it to reinforce the sound→letter
+    /// link while learning. The see-code and hear→letter drills hide it (the
+    /// learner must supply/recall it).
+    pub fn shows_letter(self) -> bool {
+        matches!(self, Drill::SeeLetterSendCode | Drill::HearCodeSendCode)
+    }
+
     /// A short human label for a mode picker.
     pub fn label(self) -> &'static str {
         match self {
-            Drill::SeeCodeTypeLetter => "See code → letter",
+            Drill::HearCodeSendCode => "Hear → send",
             Drill::SeeLetterSendCode => "See letter → send",
-            Drill::HearCodeSendCode => "Hear → send (echo)",
+            Drill::SeeCodeSendCode => "See code → send",
             Drill::HearCodeTypeLetter => "Hear → letter",
         }
     }
@@ -114,10 +127,20 @@ mod tests {
     fn drills_map_to_expected_prompt_and_answer() {
         assert_eq!(Drill::SeeLetterSendCode.prompt(), Prompt::SeeLetter);
         assert_eq!(Drill::SeeLetterSendCode.answer(), Answer::SendCode);
+        assert_eq!(Drill::SeeCodeSendCode.prompt(), Prompt::SeeCode);
+        assert_eq!(Drill::SeeCodeSendCode.answer(), Answer::SendCode);
         assert_eq!(Drill::HearCodeTypeLetter.prompt(), Prompt::HearCode);
         assert_eq!(Drill::HearCodeTypeLetter.answer(), Answer::TypeLetter);
         assert!(Drill::HearCodeSendCode.is_audio());
-        assert!(!Drill::SeeCodeTypeLetter.is_audio());
+        assert!(!Drill::SeeCodeSendCode.is_audio());
+    }
+
+    #[test]
+    fn only_learn_and_see_letter_drills_reveal_the_letter() {
+        assert!(Drill::HearCodeSendCode.shows_letter()); // learn-new reinforcement
+        assert!(Drill::SeeLetterSendCode.shows_letter());
+        assert!(!Drill::SeeCodeSendCode.shows_letter());
+        assert!(!Drill::HearCodeTypeLetter.shows_letter()); // it's the test
     }
 
     #[test]
