@@ -152,6 +152,30 @@ html, body {
 .slot.done { opacity: 0.85; }
 .slot.active { opacity: 1; transform: translateY(-4px); }
 
+/* ---- word completed: brief check-mark before the next word loads ---- */
+.wordmark {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ok);
+  align-self: center;
+  margin-left: 6px;
+  animation: pop 0.28s cubic-bezier(0.2, 1.4, 0.5, 1);
+}
+.word-done {
+  font-size: clamp(40px, 13vw, 76px);
+  font-weight: 700;
+  letter-spacing: 6px;
+  animation: pop 0.28s ease-out;
+}
+@keyframes pop {
+  from { transform: scale(0.3); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wordmark, .word-done { animation: none; }
+}
+
 /* ---- letter pad (recognition answers) ---- */
 .letterpad { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
 .letter-key {

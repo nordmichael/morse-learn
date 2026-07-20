@@ -93,27 +93,61 @@ fn record_and_ramp(mut ctx: Ctx, correct: bool) {
     }
 }
 
-/// Commit the keyed Morse in the buffer as an answer.
-fn commit_code(mut ctx: Ctx) {
-    if (ctx.buffer)().is_empty() {
-        return;
-    }
-    let judgement = ctx.trainer.write().submit_morse(&(ctx.buffer)());
+/// How long a finished word stays on screen, with its check-mark, before the
+/// next one loads.
+#[cfg(target_arch = "wasm32")]
+const WORD_DONE_MS: u32 = 800;
+
+/// The shared tail of every answer: flash the judgement, persist progress, feed
+/// the speed coach, then either celebrate a finished word or cue the next target.
+fn after_answer(mut ctx: Ctx, judgement: Judgement) {
     ctx.flash.set(Some(judgement));
     ctx.buffer.set(String::new());
     platform::save_scores(&ctx.trainer.read().scores());
     record_and_ramp(ctx, judgement == Judgement::Correct);
+
+    let finished_word = ctx.trainer.read().word_complete();
+    if finished_word {
+        schedule_word_advance(ctx);
+    } else {
+        play_if_audio(ctx);
+    }
+}
+
+/// Hold the completed word on screen for a beat, then advance to the next one.
+#[cfg(target_arch = "wasm32")]
+fn schedule_word_advance(mut ctx: Ctx) {
+    spawn(async move {
+        gloo_timers::future::TimeoutFuture::new(WORD_DONE_MS).await;
+        ctx.trainer.write().next_word();
+        ctx.buffer.set(String::new()); // drop anything keyed during the pause
+        ctx.flash.set(None);
+        play_if_audio(ctx);
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn schedule_word_advance(mut ctx: Ctx) {
+    ctx.trainer.write().next_word();
     play_if_audio(ctx);
+}
+
+/// Commit the keyed Morse in the buffer as an answer.
+fn commit_code(mut ctx: Ctx) {
+    if (ctx.buffer)().is_empty() || ctx.trainer.read().word_complete() {
+        return;
+    }
+    let judgement = ctx.trainer.write().submit_morse(&(ctx.buffer)());
+    after_answer(ctx, judgement);
 }
 
 /// Recognition answer: record the picked letter.
 fn answer_letter(mut ctx: Ctx, letter: char) {
+    if ctx.trainer.read().word_complete() {
+        return;
+    }
     let judgement = ctx.trainer.write().submit(letter);
-    ctx.flash.set(Some(judgement));
-    ctx.buffer.set(String::new());
-    platform::save_scores(&ctx.trainer.read().scores());
-    record_and_ramp(ctx, judgement == Judgement::Correct);
-    play_if_audio(ctx);
+    after_answer(ctx, judgement);
 }
 
 /// Route a physical key *press* to the current drill. In send drills: **Space is
@@ -122,6 +156,9 @@ fn answer_letter(mut ctx: Ctx, letter: char) {
 /// clears. In the recognition drill an `a`–`z` key answers directly. Returns
 /// whether the key was handled (so its default browser action is suppressed).
 fn key_down(mut ctx: Ctx, key: &str) -> bool {
+    if ctx.trainer.read().word_complete() {
+        return false; // the finished word is showing; ignore input until it clears
+    }
     let sending = (ctx.drill)().answer() == Answer::SendCode;
 
     // Space held = straight-key press: start the sidetone and the press timer.
@@ -228,10 +265,18 @@ fn App() -> Element {
 
     // Register a document-level keyboard listener once, so the app is fully
     // playable from a physical keyboard without clicking to focus.
+    //
+    // These are raw DOM callbacks, so the browser invokes them with no Dioxus
+    // scope on the stack — `spawn` (the straight-key auto-commit) would panic
+    // looking for the current scope. Capture this scope while we're still
+    // inside it and re-enter it for the duration of each handler.
     #[cfg(target_arch = "wasm32")]
     use_hook(move || {
-        platform::on_keydown(move |key| key_down(ctx, &key));
-        platform::on_keyup(move |key| key_up(ctx, &key));
+        let runtime = dioxus::core::Runtime::current();
+        let scope = dioxus::core::current_scope_id();
+        let up_runtime = runtime.clone();
+        platform::on_keydown(move |key| runtime.in_scope(scope, || key_down(ctx, &key)));
+        platform::on_keyup(move |key| up_runtime.in_scope(scope, || key_up(ctx, &key)));
     });
 
     // --- derived view state ----------------------------------------------
@@ -243,6 +288,7 @@ fn App() -> Element {
     let word = ctx.trainer.read().current_word().to_string();
     let completion = (ctx.trainer.read().completion() * 100.0).round() as u32;
     let hint = ctx.trainer.read().hint_level();
+    let word_done = ctx.trainer.read().word_complete();
     let buffer_text = (ctx.buffer)();
     let buffer_empty = buffer_text.is_empty();
 
@@ -293,25 +339,34 @@ fn App() -> Element {
                 for (i, text, class) in masked {
                     span { key: "{i}", class, "{text}" }
                 }
+                if word_done {
+                    span { class: "wordmark", "✓" }
+                }
             }
 
             // ---- prompt: how the target is presented ----
+            // A finished word has no target letter, so the prompt shows the word
+            // they just spelled instead of going blank for the pause.
             section { class: "prompt {flash_class}",
-                match current.prompt() {
-                    Prompt::SeeLetter => rsx! { div { class: "prompt-letter", "{target}" } },
-                    Prompt::SeeCode => rsx! { div { class: "prompt-code", "{target_morse}" } },
-                    Prompt::HearCode => rsx! {
-                        div { class: "prompt-hear",
-                            button {
-                                class: "play",
-                                onclick: move |_| platform::play_code(ctx.trainer.read().target_morse(), ctx.timing()),
-                                "🔊 play"
+                if word_done {
+                    div { class: "word-done", "{word}" }
+                } else {
+                    {match current.prompt() {
+                        Prompt::SeeLetter => rsx! { div { class: "prompt-letter", "{target}" } },
+                        Prompt::SeeCode => rsx! { div { class: "prompt-code", "{target_morse}" } },
+                        Prompt::HearCode => rsx! {
+                            div { class: "prompt-hear",
+                                button {
+                                    class: "play",
+                                    onclick: move |_| platform::play_code(ctx.trainer.read().target_morse(), ctx.timing()),
+                                    "🔊 play"
+                                }
+                                if current.shows_letter() {
+                                    div { class: "prompt-letter", "{target}" }
+                                }
                             }
-                            if current.shows_letter() {
-                                div { class: "prompt-letter", "{target}" }
-                            }
-                        }
-                    },
+                        },
+                    }}
                 }
             }
 
@@ -338,11 +393,13 @@ fn App() -> Element {
                             div { class: "keys",
                                 button {
                                     class: "key dot",
+                                    disabled: word_done,
                                     onclick: move |_| { ctx.flash.set(None); ctx.buffer.with_mut(|b| b.push('.')); },
                                     "•"
                                 }
                                 button {
                                     class: "key dash",
+                                    disabled: word_done,
                                     onclick: move |_| { ctx.flash.set(None); ctx.buffer.with_mut(|b| b.push('-')); },
                                     "—"
                                 }
@@ -352,6 +409,7 @@ fn App() -> Element {
                             div { class: "keys",
                                 button {
                                     class: "key straight",
+                                    disabled: word_done,
                                     onpointerdown: move |_| {
                                         ctx.flash.set(None);
                                         ctx.key_gen.with_mut(|g| *g += 1); // cancel any pending auto-commit

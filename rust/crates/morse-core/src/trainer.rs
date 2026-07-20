@@ -19,6 +19,8 @@ pub const CONSECUTIVE_CORRECT: u32 = 3;
 pub const SCORE_LIMIT: i32 = LEARNED_THRESHOLD + 2;
 /// How many letters are unlocked at the very start.
 pub const STARTING_LETTERS: usize = 3;
+/// Consecutive mistakes on one letter before its Morse pattern is revealed.
+pub const STRUGGLE_MISTAKES: u32 = 3;
 
 /// The result of submitting an answer for the current letter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -64,6 +66,9 @@ pub struct Trainer {
     consecutive_correct: u32,
     /// Mistakes made on the *current* letter (resets when it's answered).
     mistakes_on_letter: u32,
+    /// The word is fully answered and is being shown as complete. The trainer
+    /// holds here — no target letter — until [`Trainer::next_word`] advances it.
+    word_complete: bool,
     rng: Rng,
 }
 
@@ -85,6 +90,7 @@ impl Trainer {
             letter_index: 0,
             consecutive_correct: 0,
             mistakes_on_letter: 0,
+            word_complete: false,
             rng: Rng::new(seed),
         };
         trainer.recompute_letters_in_play();
@@ -123,14 +129,25 @@ impl Trainer {
     }
 
     /// The hint the UI should show for the current letter.
+    ///
+    /// [`STRUGGLE_MISTAKES`] consecutive misses on the same letter reveal its
+    /// pattern *even if the letter was already learned* — a learned letter can
+    /// still go stale, and that is exactly when the reminder is worth most.
     pub fn hint_level(&self) -> HintLevel {
-        if self.score_of(self.target_letter()) >= LEARNED_THRESHOLD {
-            HintLevel::None
-        } else if self.mistakes_on_letter >= 4 {
+        if self.mistakes_on_letter >= STRUGGLE_MISTAKES {
             HintLevel::Pattern
+        } else if self.score_of(self.target_letter()) >= LEARNED_THRESHOLD {
+            HintLevel::None
         } else {
             HintLevel::Picture
         }
+    }
+
+    /// Whether the current word has just been completed. While this is set there
+    /// is no target letter: the UI shows the finished word (and its check-mark)
+    /// until it calls [`Trainer::next_word`].
+    pub fn word_complete(&self) -> bool {
+        self.word_complete
     }
 
     /// Progress for every letter in learning order — drives the header lights.
@@ -162,6 +179,7 @@ impl Trainer {
     /// Submit the Morse the user entered (e.g. `"..."`). Convenience wrapper
     /// that decodes to a letter first; an undecodable pattern counts as a miss.
     pub fn submit_morse(&mut self, code: &str) -> Judgement {
+        self.next_word(); // an answer implicitly acknowledges a finished word
         match alphabet::from_morse(code) {
             Some(letter) => self.submit(letter),
             None => self.register_incorrect(),
@@ -169,7 +187,11 @@ impl Trainer {
     }
 
     /// Submit a decoded letter as the user's answer for the current target.
+    ///
+    /// Answering while a word is complete acknowledges it first, so the answer
+    /// applies to the next word rather than being scored against no target.
     pub fn submit(&mut self, answer: char) -> Judgement {
+        self.next_word();
         if answer.to_ascii_lowercase() == self.target_letter() {
             self.register_correct()
         } else {
@@ -185,13 +207,26 @@ impl Trainer {
 
         self.letter_index += 1;
         if self.letter_index >= self.current_word.chars().count() {
-            // Word finished — try to unlock a new letter, then fetch the next word.
-            self.maybe_unlock_letter();
-            self.recompute_letters_in_play();
-            self.current_word = self.pick_word();
-            self.letter_index = 0;
+            // Word finished. Hold here rather than swapping the word out from
+            // under the learner — `next_word` does the advance once the UI has
+            // shown the completed word.
+            self.word_complete = true;
         }
         Judgement::Correct
+    }
+
+    /// Acknowledge a completed word: unlock a new letter if one was earned, then
+    /// pick the next word. Does nothing unless [`Trainer::word_complete`] is set.
+    pub fn next_word(&mut self) {
+        if !self.word_complete {
+            return;
+        }
+        self.maybe_unlock_letter();
+        self.recompute_letters_in_play();
+        self.current_word = self.pick_word();
+        self.letter_index = 0;
+        self.mistakes_on_letter = 0;
+        self.word_complete = false;
     }
 
     fn register_incorrect(&mut self) -> Judgement {
@@ -286,6 +321,14 @@ impl Trainer {
 mod tests {
     use super::*;
 
+    /// Answer the current target correctly, acknowledging a finished word first
+    /// — the same two-step the UI performs around the completion check-mark.
+    fn answer_target(t: &mut Trainer) -> Judgement {
+        t.next_word();
+        let target = t.target_letter();
+        t.submit(target)
+    }
+
     #[test]
     fn starts_with_three_letters_and_a_valid_word() {
         let t = Trainer::new(1);
@@ -318,8 +361,7 @@ mod tests {
     fn scores_are_clamped() {
         let mut t = Trainer::new(1);
         for _ in 0..50 {
-            let target = t.target_letter();
-            t.submit(target);
+            answer_target(&mut t);
         }
         assert!(t.scores().iter().all(|&s| s <= SCORE_LIMIT));
     }
@@ -333,8 +375,7 @@ mod tests {
             if t.completion() > 0.1 {
                 break;
             }
-            let target = t.target_letter();
-            t.submit(target);
+            answer_target(&mut t);
         }
         // Some letters should now be learned.
         assert!(t.progress().iter().any(|p| p.learned));
@@ -344,19 +385,79 @@ mod tests {
     fn always_answering_correctly_eventually_unlocks_letters() {
         let mut t = Trainer::new(12345);
         for _ in 0..500 {
-            let target = t.target_letter();
-            t.submit(target);
+            answer_target(&mut t);
         }
         // Playing perfectly for a while must widen the pool beyond the initial 3.
         assert!(t.letters_in_play().len() > STARTING_LETTERS);
     }
 
     #[test]
+    fn finishing_a_word_holds_before_advancing() {
+        let mut t = Trainer::new(1);
+        let word = t.current_word().to_string();
+
+        for _ in 0..word.chars().count() {
+            assert!(!t.word_complete(), "should not complete mid-word");
+            answer_target(&mut t);
+        }
+
+        // The finished word is still on screen, fully revealed, awaiting the ack.
+        assert!(t.word_complete());
+        assert_eq!(t.current_word(), word);
+        assert_eq!(t.letter_index(), word.chars().count());
+
+        t.next_word();
+        assert!(!t.word_complete());
+        assert_eq!(t.letter_index(), 0);
+    }
+
+    #[test]
+    fn three_mistakes_in_a_row_reveal_the_pattern() {
+        let mut t = Trainer::new(1);
+        let wrong = if t.target_letter() == 'e' { 't' } else { 'e' };
+
+        t.submit(wrong);
+        t.submit(wrong);
+        assert_ne!(t.hint_level(), HintLevel::Pattern, "not struggling yet");
+        t.submit(wrong);
+        assert_eq!(t.hint_level(), HintLevel::Pattern);
+    }
+
+    #[test]
+    fn a_learned_letter_still_gets_a_hint_when_it_goes_stale() {
+        let mut t = Trainer::new(1);
+        // Drive the current letter to learned, so it normally shows no hint.
+        let target = t.target_letter();
+        for _ in 0..LEARNED_THRESHOLD {
+            t.bump_score(target, 1);
+        }
+        assert_eq!(t.hint_level(), HintLevel::None);
+
+        let wrong = if target == 'e' { 't' } else { 'e' };
+        for _ in 0..STRUGGLE_MISTAKES {
+            t.submit(wrong);
+        }
+        assert_eq!(t.hint_level(), HintLevel::Pattern);
+    }
+
+    #[test]
+    fn a_correct_answer_clears_the_struggle_hint() {
+        let mut t = Trainer::new(1);
+        let wrong = if t.target_letter() == 'e' { 't' } else { 'e' };
+        for _ in 0..STRUGGLE_MISTAKES {
+            t.submit(wrong);
+        }
+        assert_eq!(t.hint_level(), HintLevel::Pattern);
+
+        answer_target(&mut t);
+        assert_ne!(t.hint_level(), HintLevel::Pattern);
+    }
+
+    #[test]
     fn restore_round_trips_scores() {
         let mut t = Trainer::new(9);
         for _ in 0..20 {
-            let target = t.target_letter();
-            t.submit(target);
+            answer_target(&mut t);
         }
         let saved = t.scores();
         let restored = Trainer::restore(saved, 9);
