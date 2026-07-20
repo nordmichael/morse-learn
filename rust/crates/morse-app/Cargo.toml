@@ -1,0 +1,39 @@
+[package]
+name = "morse-app"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Cross-platform (web / Android / iOS / desktop) Morse trainer UI built with Dioxus."
+
+[dependencies]
+morse-core = { path = "../morse-core" }
+dioxus = { version = "0.7", features = ["router"] }
+
+# Web build needs the browser clock (for a random seed) and localStorage (to
+# persist progress). These only compile into the WASM target.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+gloo-timers = { version = "0.4", features = ["futures"] }
+web-sys = { version = "0.3", features = [
+    "Window",
+    "Storage",
+    "Document",
+    "EventTarget",
+    "Event",
+    "KeyboardEvent",
+    "AudioContext",
+    "BaseAudioContext",
+    "AudioNode",
+    "AudioParam",
+    "AudioDestinationNode",
+    "GainNode",
+    "OscillatorNode",
+    "OscillatorType",
+] }
+
+[features]
+default = ["web"]
+web = ["dioxus/web"]
+desktop = ["dioxus/desktop"]
+mobile = ["dioxus/mobile"]
