@@ -45,6 +45,7 @@ struct Ctx {
     press_start: Signal<Option<f64>>, // straight-key press timestamp (ms)
     coach: Signal<SpeedCoach>,
     auto_speed: Signal<bool>,
+    show_hints: Signal<bool>, // show the rhythm-mnemonic hint (persisted)
 }
 
 impl Ctx {
@@ -115,11 +116,26 @@ fn answer_letter(mut ctx: Ctx, letter: char) {
     play_if_audio(ctx);
 }
 
-/// Route a physical key press to the right action for the current drill. `.`/`j`
-/// key a dit, `-`/`k` a dah, Enter/Space commits, Backspace/Escape clears; in
-/// recognition drills an `a`–`z` key answers directly. Returns whether the key
-/// was handled (so its default browser action can be suppressed).
-fn handle_key(mut ctx: Ctx, key: &str) -> bool {
+/// Route a physical key *press* to the current drill. In send drills: **Space is
+/// a straight key** — hold it and a sidetone sounds until you release (see
+/// [`key_up`]); `.`/`j` key a dit, `-`/`k` a dah, Enter commits, Backspace/Escape
+/// clears. In the recognition drill an `a`–`z` key answers directly. Returns
+/// whether the key was handled (so its default browser action is suppressed).
+fn key_down(mut ctx: Ctx, key: &str) -> bool {
+    let sending = (ctx.drill)().answer() == Answer::SendCode;
+
+    // Space held = straight-key press: start the sidetone and the press timer.
+    if key == " " {
+        if !sending {
+            return false;
+        }
+        ctx.flash.set(None);
+        ctx.key_gen.with_mut(|g| *g += 1); // cancel any pending auto-commit
+        ctx.press_start.set(Some(platform::now_ms()));
+        platform::tone_on();
+        return true;
+    }
+
     match (ctx.drill)().answer() {
         Answer::SendCode => match key {
             "." | "j" | "J" => {
@@ -132,7 +148,7 @@ fn handle_key(mut ctx: Ctx, key: &str) -> bool {
                 ctx.buffer.with_mut(|b| b.push('-'));
                 true
             }
-            "Enter" | " " => {
+            "Enter" => {
                 commit_code(ctx);
                 true
             }
@@ -153,6 +169,26 @@ fn handle_key(mut ctx: Ctx, key: &str) -> bool {
             }
         }
     }
+}
+
+/// Handle a key *release*. Only Space matters: it ends a straight-key press —
+/// stop the sidetone, classify the hold as a dit or dah by its duration, append
+/// it, and schedule the letter's auto-commit.
+fn key_up(mut ctx: Ctx, key: &str) -> bool {
+    if key != " " {
+        return false;
+    }
+    platform::tone_off();
+    if let Some(started) = (ctx.press_start)() {
+        let held = (platform::now_ms() - started).max(0.0) as u32;
+        let symbol = ctx.timing().classify_press(held);
+        ctx.buffer.with_mut(|b| b.push(symbol.as_char()));
+        ctx.press_start.set(None);
+        ctx.key_gen.with_mut(|g| *g += 1);
+        schedule_autocommit(ctx);
+        return true;
+    }
+    false
 }
 
 /// After a straight-key press, schedule an automatic letter commit once the key
@@ -179,7 +215,7 @@ fn App() -> Element {
         trainer: use_signal(|| Trainer::restore(platform::load_scores(), platform::seed())),
         buffer: use_signal(String::new),
         flash: use_signal(|| Option::<Judgement>::None),
-        drill: use_signal(|| Drill::SeeCodeTypeLetter),
+        drill: use_signal(|| Drill::HearCodeSendCode),
         method: use_signal(|| InputMethod::TwoKey),
         wpm: use_signal(|| 15u32),
         eff_wpm: use_signal(|| 15u32),
@@ -187,13 +223,15 @@ fn App() -> Element {
         press_start: use_signal(|| Option::<f64>::None),
         coach: use_signal(SpeedCoach::default),
         auto_speed: use_signal(|| false),
+        show_hints: use_signal(|| platform::load_flag("show_hints", true)),
     };
 
     // Register a document-level keyboard listener once, so the app is fully
     // playable from a physical keyboard without clicking to focus.
     #[cfg(target_arch = "wasm32")]
     use_hook(move || {
-        platform::on_keydown(move |key| handle_key(ctx, &key));
+        platform::on_keydown(move |key| key_down(ctx, &key));
+        platform::on_keyup(move |key| key_up(ctx, &key));
     });
 
     // --- derived view state ----------------------------------------------
@@ -263,16 +301,23 @@ fn App() -> Element {
                     Prompt::SeeLetter => rsx! { div { class: "prompt-letter", "{target}" } },
                     Prompt::SeeCode => rsx! { div { class: "prompt-code", "{target_morse}" } },
                     Prompt::HearCode => rsx! {
-                        button {
-                            class: "play",
-                            onclick: move |_| platform::play_code(ctx.trainer.read().target_morse(), ctx.timing()),
-                            "🔊 play"
+                        div { class: "prompt-hear",
+                            button {
+                                class: "play",
+                                onclick: move |_| platform::play_code(ctx.trainer.read().target_morse(), ctx.timing()),
+                                "🔊 play"
+                            }
+                            if current.shows_letter() {
+                                div { class: "prompt-letter", "{target}" }
+                            }
                         }
                     },
                 }
             }
 
-            Hint { letter: target, level: hint }
+            if (ctx.show_hints)() {
+                Hint { letter: target, level: hint }
+            }
 
             // ---- answer area: depends on the drill ----
             match current.answer() {
@@ -311,8 +356,10 @@ fn App() -> Element {
                                         ctx.flash.set(None);
                                         ctx.key_gen.with_mut(|g| *g += 1); // cancel any pending auto-commit
                                         ctx.press_start.set(Some(platform::now_ms()));
+                                        platform::tone_on(); // sidetone for the whole press
                                     },
                                     onpointerup: move |_| {
+                                        platform::tone_off();
                                         if let Some(started) = (ctx.press_start)() {
                                             let held = (platform::now_ms() - started).max(0.0) as u32;
                                             let symbol = ctx.timing().classify_press(held);
@@ -323,7 +370,13 @@ fn App() -> Element {
                                         ctx.key_gen.with_mut(|g| *g += 1);
                                         schedule_autocommit(ctx);
                                     },
-                                    "press · short / long —"
+                                    // Stop the tone if the pointer leaves while held.
+                                    onpointerleave: move |_| {
+                                        if (ctx.press_start)().is_some() {
+                                            platform::tone_off();
+                                        }
+                                    },
+                                    "hold · short / long —"
                                 }
                             }
                         },
@@ -340,7 +393,7 @@ fn App() -> Element {
                             "enter"
                         }
                     }
-                    p { class: "kbdhint", "keyboard:  . or j = dit  ·  - or k = dah  ·  space/enter = commit  ·  ⌫ = clear" }
+                    p { class: "kbdhint", "keyboard:  hold Space = straight key  ·  . / j = dit  ·  - / k = dah  ·  Enter = commit  ·  ⌫ = clear" }
                 },
             }
         }
@@ -399,8 +452,17 @@ fn SettingsBar(ctx: Ctx) -> Element {
                 }
             }
 
-            // auto speed-ramp toggle + live accuracy
+            // feature toggles: hints + auto speed-ramp, with live accuracy
             div { class: "method",
+                button {
+                    class: if (ctx.show_hints)() { "tab on" } else { "tab" },
+                    onclick: move |_| {
+                        let now = !(ctx.show_hints)();
+                        ctx.show_hints.set(now);
+                        platform::save_flag("show_hints", now);
+                    },
+                    "Hints"
+                }
                 button {
                     class: if (ctx.auto_speed)() { "tab on" } else { "tab" },
                     onclick: move |_| {
